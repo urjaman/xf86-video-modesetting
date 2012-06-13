@@ -46,6 +46,6 @@ Depends:
 Section: debug
 Priority: extra
 Description: X.Org X server -- Generic modesetting driver (debug symbols)
- This driver provides support for the generic modesetting driver
+ This driver provides support for the generic modesetting driver.
  .
  This package provides debugging symbols for this Xorg X driver.

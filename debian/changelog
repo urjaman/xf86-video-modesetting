@@ -1,5 +1,5 @@
 xserver-xorg-video-modesetting (0.3.0-1) UNRELEASED; urgency=low
 
-  * Initial release.
+  * Initial release (Closes: #677425).
 
  -- Timo Aaltonen <tjaalton@ubuntu.com>  Mon, 28 May 2012 10:47:30 +0300

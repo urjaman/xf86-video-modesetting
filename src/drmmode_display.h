@@ -67,6 +67,7 @@ typedef struct {
     Bool shadow_enable;
     void *shadow_fb;
 
+    Bool force_24_32;
 #ifdef HAVE_SCREEN_SPECIFIC_PRIVATE_KEYS
     DevPrivateKeyRec pixmapPrivateKeyRec;
 #endif

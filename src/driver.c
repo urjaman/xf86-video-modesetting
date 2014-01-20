@@ -62,6 +62,7 @@
 #include "compat-api.h"
 #include "driver.h"
 
+#include "sh3224.h"
 static void AdjustFrame(ADJUST_FRAME_ARGS_DECL);
 static Bool CloseScreen(CLOSE_SCREEN_ARGS_DECL);
 static Bool EnterVT(VT_FUNC_ARGS_DECL);
@@ -663,9 +664,13 @@ PreInit(ScrnInfoPtr pScrn, int flags)
 #endif
 #endif
     drmmode_get_default_bpp(pScrn, &ms->drmmode, &defaultdepth, &defaultbpp);
-    if (defaultdepth == 24 && defaultbpp == 24)
-	    bppflags = SupportConvert32to24 | Support24bppFb;
-    else
+    if (defaultdepth == 24 && defaultbpp == 24) {
+	ms->drmmode.force_24_32 = TRUE;
+	xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+		   "No native 24bpp using shadow to workaround\n");
+	defaultbpp = 32;
+	bppflags = PreferConvert24to32 | SupportConvert24to32 | Support32bppFb;
+    } else
 	    bppflags = PreferConvert24to32 | SupportConvert24to32 | Support32bppFb;
     
     if (!xf86SetDepthBpp
@@ -701,14 +706,19 @@ PreInit(ScrnInfoPtr pScrn, int flags)
 	ms->drmmode.sw_cursor = TRUE;
     }
 
-    ret = drmGetCap(ms->fd, DRM_CAP_DUMB_PREFER_SHADOW, &value);
-    if (!ret) {
-	prefer_shadow = !!value;
+    if (ms->drmmode.force_24_32) {
+	    prefer_shadow = TRUE;
+	    ms->drmmode.shadow_enable = TRUE;
+    } else {
+	    ret = drmGetCap(ms->fd, DRM_CAP_DUMB_PREFER_SHADOW, &value);
+	    if (!ret) {
+		    prefer_shadow = !!value;
+	    }
+
+	    ms->drmmode.shadow_enable = xf86ReturnOptValBool(ms->Options, OPTION_SHADOW_FB, prefer_shadow);
     }
 
-    ms->drmmode.shadow_enable = xf86ReturnOptValBool(ms->Options, OPTION_SHADOW_FB, prefer_shadow);
-
-    xf86DrvMsg(pScrn->scrnIndex, X_INFO, "ShadowFB: preferred %s, enabled %s\n", prefer_shadow ? "YES" : "NO", ms->drmmode.shadow_enable ? "YES" : "NO");
+    xf86DrvMsg(pScrn->scrnIndex, X_INFO, "ShadowFB: preferred %s, enabled %s\n", prefer_shadow ? "YES" : "NO", ms->drmmode.shadow_enable ? (ms->drmmode.force_24_32 ? "FORCE" : "YES") : "NO");
     if (drmmode_pre_init(pScrn, &ms->drmmode, pScrn->bitsPerPixel / 8) == FALSE) {
 	xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "KMS setup failed\n");
 	goto fail;
@@ -758,8 +768,9 @@ msShadowWindow(ScreenPtr screen, CARD32 row, CARD32 offset, int mode,
     ScrnInfoPtr pScrn = xf86ScreenToScrn(screen);
     modesettingPtr ms = modesettingPTR(pScrn);
     int stride;
+    int kernbpp = (ms->drmmode.force_24_32 && pScrn->bitsPerPixel == 32) ? 24 : 32;
 
-    stride = (pScrn->displayWidth * pScrn->bitsPerPixel) / 8;
+    stride = (pScrn->displayWidth * kernbpp) / 8;
     *size = stride;
 
     return ((uint8_t *)ms->drmmode.front_bo->ptr + row * stride + offset);
@@ -773,10 +784,11 @@ CreateScreenResources(ScreenPtr pScreen)
     PixmapPtr rootPixmap;
     Bool ret;
     void *pixels;
+    Bool use_ms_shadow = ms->drmmode.force_24_32 && pScrn->bitsPerPixel == 32;
     pScreen->CreateScreenResources = ms->createScreenResources;
     ret = pScreen->CreateScreenResources(pScreen);
     pScreen->CreateScreenResources = CreateScreenResources;
-
+    
     if (!drmmode_set_desired_modes(pScrn, &ms->drmmode))
       return FALSE;
 
@@ -797,7 +809,7 @@ CreateScreenResources(ScreenPtr pScreen)
 	FatalError("Couldn't adjust screen pixmap\n");
 
     if (ms->drmmode.shadow_enable) {
-	if (!shadowAdd(pScreen, rootPixmap, shadowUpdatePackedWeak(),
+	if (!shadowAdd(pScreen, rootPixmap, use_ms_shadow ? ms_shadowUpdate32to24 : shadowUpdatePackedWeak(),
 		       msShadowWindow, 0, 0))
 	    return FALSE;
     }
@@ -852,7 +864,6 @@ ScreenInit(SCREEN_INIT_ARGS_DECL)
     modesettingPtr ms = modesettingPTR(pScrn);
     VisualPtr visual;
     int ret;
-
     pScrn->pScreen = pScreen;
 
     ret = drmSetMaster(ms->fd);

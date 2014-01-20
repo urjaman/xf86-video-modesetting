@@ -314,13 +314,13 @@ drmmode_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 	uint32_t fb_id;
 	drmModeModeInfo kmode;
 	int height;
-
+	int bpp = (drmmode->force_24_32 && pScrn->bitsPerPixel == 32) ? 24 : 32;
 	height = pScrn->virtualY;
 
 	if (drmmode->fb_id == 0) {
 		ret = drmModeAddFB(drmmode->fd,
 				   pScrn->virtualX, height,
-                                   pScrn->depth, pScrn->bitsPerPixel,
+                                   pScrn->depth, bpp,
 				   drmmode->front_bo->pitch,
 				   drmmode->front_bo->handle,
                                    &drmmode->fb_id);
@@ -1142,7 +1142,8 @@ drmmode_xf86crtc_resize (ScrnInfoPtr scrn, int width, int height)
 	int cpp = (scrn->bitsPerPixel + 7) / 8;
 	PixmapPtr ppix = screen->GetScreenPixmap(screen);
 	void *new_pixels;
-
+	int kernbpp = (drmmode->force_24_32 && scrn->bitsPerPixel == 32) ? 24 : 32;
+	int kerncpp = (kernbpp + 7) / 8;
 	if (scrn->virtualX == width && scrn->virtualY == height)
 		return TRUE;
 
@@ -1156,7 +1157,7 @@ drmmode_xf86crtc_resize (ScrnInfoPtr scrn, int width, int height)
 	old_fb_id = drmmode->fb_id;
 	old_front = drmmode->front_bo;
 
-	drmmode->front_bo = dumb_bo_create(drmmode->fd, width, height, scrn->bitsPerPixel);
+	drmmode->front_bo = dumb_bo_create(drmmode->fd, width, height, kernbpp);
 	if (!drmmode->front_bo)
 		goto fail;
 
@@ -1164,10 +1165,10 @@ drmmode_xf86crtc_resize (ScrnInfoPtr scrn, int width, int height)
 
 	scrn->virtualX = width;
 	scrn->virtualY = height;
-	scrn->displayWidth = pitch / cpp;
+	scrn->displayWidth = pitch / kerncpp;
 
 	ret = drmModeAddFB(drmmode->fd, width, height, scrn->depth,
-			   scrn->bitsPerPixel, pitch,
+			   kernbpp, pitch,
 			   drmmode->front_bo->handle,
 			   &drmmode->fb_id);
 	if (ret)
@@ -1190,7 +1191,7 @@ drmmode_xf86crtc_resize (ScrnInfoPtr scrn, int width, int height)
 		free(drmmode->shadow_fb);
 		drmmode->shadow_fb = new_shadow;
 		screen->ModifyPixmapHeader(ppix, width, height, -1, -1,
-					   pitch, drmmode->shadow_fb);
+					   scrn->displayWidth * cpp, drmmode->shadow_fb);
 	}
 
 #if XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,9,99,1,0)
@@ -1220,7 +1221,7 @@ drmmode_xf86crtc_resize (ScrnInfoPtr scrn, int width, int height)
 	drmmode->front_bo = old_front;
 	scrn->virtualX = old_width;
 	scrn->virtualY = old_height;
-	scrn->displayWidth = old_pitch / cpp;
+	scrn->displayWidth = old_pitch / kerncpp;
 	drmmode->fb_id = old_fb_id;
 
 	return FALSE;
@@ -1246,7 +1247,10 @@ Bool drmmode_pre_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int cpp)
 	xf86CrtcConfigInit(pScrn, &drmmode_xf86crtc_config_funcs);
 
 	drmmode->scrn = pScrn;
-	drmmode->cpp = cpp;
+	if (drmmode->force_24_32 && cpp == 4)
+		drmmode->cpp = 3;
+	else
+		drmmode->cpp = cpp;
 	drmmode->mode_res = drmModeGetResources(drmmode->fd);
 	if (!drmmode->mode_res)
 		return FALSE;
@@ -1488,24 +1492,24 @@ Bool drmmode_create_initial_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode)
 	xf86CrtcConfigPtr   xf86_config = XF86_CRTC_CONFIG_PTR(pScrn);
 	int width;
 	int height;
-	int bpp = pScrn->bitsPerPixel;
+	int kernbpp = (drmmode->force_24_32 && pScrn->bitsPerPixel == 32) ? 24 : 32;
 	int i;
-	int cpp = (bpp + 7) / 8;
+	int kerncpp = (kernbpp + 7) / 8;
 
 	width = pScrn->virtualX;
 	height = pScrn->virtualY;
 
-	drmmode->front_bo = dumb_bo_create(drmmode->fd, width, height, bpp);
+	drmmode->front_bo = dumb_bo_create(drmmode->fd, width, height, kernbpp);
 	if (!drmmode->front_bo)
 		return FALSE;
-	pScrn->displayWidth = drmmode->front_bo->pitch / cpp;
+	pScrn->displayWidth = drmmode->front_bo->pitch / kerncpp;
 
 	width = height = 64;
-	bpp = 32;
+	kernbpp = 32;
 	for (i = 0; i < xf86_config->num_crtc; i++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[i];
 		drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
-		drmmode_crtc->cursor_bo = dumb_bo_create(drmmode->fd, width, height, bpp);
+		drmmode_crtc->cursor_bo = dumb_bo_create(drmmode->fd, width, height, kernbpp);
 	}
 	return TRUE;
 }

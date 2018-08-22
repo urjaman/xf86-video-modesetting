@@ -55,7 +55,7 @@
 #ifdef XSERVER_PLATFORM_BUS
 #include "xf86platformBus.h"
 #endif
-#if XSERVER_LIBPCIACCESS
+#ifdef XSERVER_LIBPCIACCESS
 #include <pciaccess.h>
 #endif
 
@@ -217,7 +217,7 @@ static Bool probe_hw(const char *dev, struct xf86_platform_device *platform_dev)
 {
     int fd;
 
-#if XF86_PDEV_SERVER_FD
+#ifdef XF86_PDEV_SERVER_FD
     if (platform_dev && (platform_dev->flags & XF86_PDEV_SERVER_FD)) {
         fd = xf86_get_platform_device_int_attrib(platform_dev, ODEV_ATTRIB_FD, -1);
         if (fd == -1)
@@ -303,7 +303,7 @@ ms_driver_func(ScrnInfoPtr scrn, xorgDriverFuncOp op, void *data)
     }
 }
 
-#if XSERVER_LIBPCIACCESS
+#ifdef XSERVER_LIBPCIACCESS
 static Bool
 ms_pci_probe(DriverPtr driver,
 	     int entity_num, struct pci_device *dev, intptr_t match_data)
@@ -647,7 +647,7 @@ PreInit(ScrnInfoPtr pScrn, int flags)
     pScrn->progClock = TRUE;
     pScrn->rgbBits = 8;
 
-#if XSERVER_PLATFORM_BUS
+#ifdef XSERVER_PLATFORM_BUS
     if (pEnt->location.type == BUS_PLATFORM) {
 #ifdef XF86_PDEV_SERVER_FD
         if (pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD)
@@ -666,7 +666,7 @@ PreInit(ScrnInfoPtr pScrn, int flags)
         if (ms->PciInfo) {
             BusID = malloc(64);
             sprintf(BusID, "PCI:%d:%d:%d",
-#if XSERVER_LIBPCIACCESS
+#ifdef XSERVER_LIBPCIACCESS
                     ((ms->PciInfo->domain << 8) | ms->PciInfo->bus),
                     ms->PciInfo->dev, ms->PciInfo->func
 #else

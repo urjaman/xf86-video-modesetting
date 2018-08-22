@@ -51,7 +51,7 @@ typedef struct _modesettingRec
 
     int Chipset;
     EntityInfoPtr pEnt;
-#if XSERVER_LIBPCIACCESS
+#ifdef XSERVER_LIBPCIACCESS
     struct pci_device *PciInfo;
 #else
     pciVideoPtr PciInfo;
